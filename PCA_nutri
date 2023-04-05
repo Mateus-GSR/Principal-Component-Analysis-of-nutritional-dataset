@@ -1,0 +1,198 @@
+# Load dataset
+nutritional<-read.table("nutritional.txt")
+
+# Load libraries
+library(ggplot2)
+library(ggfortify)
+library(MVN)
+
+# Standartize the data
+
+# Divide all columns by the weight column
+nutritional_divided <- nutritional / nutritional$weight
+
+# Remove weight column from the resulting df
+nutritional_divided <- nutritional_divided[, -which(names(nutritional_divided) == "weight")]
+
+# Standardize each variable
+nutritional_std <- scale(nutritional_divided)
+print(nutritional_std)
+
+# Compute correl matrix
+corr_matrix <- cor(nutritional_std)
+ggcorrplot(corr_matrix)
+
+# perform PCA on the nutritional dataframe
+pca <- prcomp(nutritional_std)
+summary(pca)
+
+
+# Choose the number k of components for PCA analysis
+
+# calculate the percentage of variance explained by each component
+var_explained = pca$sdev^2 / sum(pca$sdev^2)
+
+# Scree Plot
+qplot(c(1:6), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Var. Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+
+# Interpretation to the first two principal components
+loadings <- pca$rotation[,1:2]
+print(loadings)
+top_variables <- rownames(loadings)[apply(abs(loadings), 1, which.max)]
+print(top_variables)
+
+# Identifying univariate outliers
+
+# Get the components from the PCA result
+pc1 <- pca$x[,1]
+pc2 <- pca$x[,2]
+pc3 <- pca$x[,3]
+
+# Boxplot of the 3 PC's
+par(mfrow=c(1,3))
+
+bp1 <-boxplot(pc1, outline=TRUE,main = "PC1 Outliers", outcol="red")
+outliers_pc1 <- bp$out
+bp2 <-boxplot(pc2, outline=TRUE,main = "PC2 Outliers", outcol="red")
+outliers_pc2 <- bp2$out
+bp3 <-boxplot(pc3, outline=TRUE,main = "PC3 Outliers", outcol="red")
+outliers_pc3 <- bp3$out
+
+print(outliers_pc1)
+print(outliers_pc2)
+print(outliers_pc3)
+
+subset(nutritional_std, rownames(nutritional_std) %in% c("866", "84"," 921"," 49", "819","866"," 267", "921","863"))
+
+# Creating a 3D scatter plot while color coding the outliers
+
+# Calculate the Mahalanobis distance for each data point
+md <- mahalanobis(nutritional_std, center = colMeans(nutritional_std), cov = cov(nutritional_std))
+
+# Calculate the cutoff for outliers
+cutoff <- qchisq(0.95, df = ncol(nutritional_std))
+
+# Identify the outliers
+outliers <- which(md > cutoff)
+
+nutritional_std<-as.data.frame(nutritional_std)
+
+# Add a column to the original dataframe indicating if the index is an outlier
+nutritional_std$outlier <- ifelse(row.names(nutritional_std) %in% outliers, "yes", "no")
+
+# Create a 3D scatter plot of the first three principal components
+scatterplot3d(pca$x[,1], pca$x[,2], pca$x[,3], color = ifelse(row.names(nutritional_std) %in% outliers, "red", "blue"),
+              xlab = "PC1", ylab = "PC2", zlab = "PC3")
+              
+# Investigating multivariate normality
+
+# Extract the first three principal components
+pca_result <- as.data.frame(pca$x[, 1:3])
+
+pca_scores <- pca$x[, 1:3]
+
+# Create a scatter plot matrix of the first three principal components
+pairs(pca_result, pch = 20, col = "blue")
+
+par(mfrow=c(3,1))
+# Create a Q-Q plot of the first three principal components
+qqnorm(pca_scores[,1], main="Q-Q Plot for PC1")
+qqline(pca_scores[,1], col = "red")
+
+qqnorm(pca_scores[,2], main="Q-Q Plot for PC2")
+qqline(pca_scores[,2], col = "red")
+
+qqnorm(pca_scores[,3], main="Q-Q Plot for PC3")
+qqline(pca_scores[,3], col = "red")
+
+
+# Investigating multivariate outliers 
+
+# Calculate the squared Mahalanobis distances
+mahalanobis_dist <- mahalanobis(pca_scores, colMeans(pca_scores), cov(pca_scores))
+
+# Create a QQ plot of the squared Mahalanobis distances
+par(mfrow=c(1,1))
+# Plot squared Mahalanobis distances versus observation indexes
+plot(seq_len(nrow(nutritional_std)), mahalanobis_dist, 
+     xlab = "Observation index", ylab = "Squared Mahalanobis distance",
+     main = "Squared Mahalanobis distances vs observation indexes")
+
+# Find the critical value for the 5% level of significance
+n <- nrow(pca_scores)
+p <- ncol(pca_scores)
+alpha <- 0.05
+critical_value <- qchisq(1 - alpha, p)
+
+# Identify the outliers
+outlier_indices <- which(mahalanobis_dist > critical_value)
+unique(outlier_indices)
+
+# Select 5 outliers
+random_outlier <- sample(outlier_indices, 5)
+print(random_outlier)
+
+subset(nutritional_std, rownames(nutritional_std) %in% c("74", "96","352","96","866"))
+
+# Plot Boxplots
+b1<- ggplot(nutritional_std, aes(x = "", y = fat)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Fat", x = "", y = "") +
+  theme_classic()
+
+b2<- ggplot(nutritional_std, aes(x = "", y = food.energy)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Food.energy", x = "", y = "") +
+  theme_classic()
+
+b3<-ggplot(nutritional_std, aes(x = "", y = carbohydrates)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Fat", x = "", y = "") +
+  theme_classic()
+
+b4<-ggplot(nutritional_std, aes(x = "", y = protein)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Fat", x = "", y = "") +
+  theme_classic()
+
+b5<-ggplot(nutritional_std, aes(x = "", y = cholesterol)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Fat", x = "", y = "") +
+  theme_classic()
+
+b6<-ggplot(nutritional_std, aes(x = "", y = saturated.fat)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  geom_point(aes(color = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), "Outlier", "Normal"),
+                 size = ifelse(row.names(nutritional_std) %in% c("74", "96","352","96","866"), 3, 1))) +
+  scale_color_manual(values = c("Normal" = "black", "Outlier" = "red"), guide = FALSE) +
+  scale_size(range = c(1, 3), guide = FALSE) +
+  labs(title = "Boxplot of Fat", x = "", y = "") +
+  theme_classic()
+
+# Arrange plots together
+grid.arrange(b1, b2,b3,b4,b5,b6, ncol=3, nrow=2)              
